@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -40,6 +41,16 @@ var tasks = map[string]Task{
 	},
 }
 
+func generateID() string {
+	nextID := 0
+	for id := range tasks {
+		if i, _ := strconv.Atoi(id); i > nextID {
+			nextID = i
+		}
+	}
+	return strconv.Itoa(nextID + 1)
+}
+
 func getTasks(w http.ResponseWriter, r *http.Request) {
 	resp, err := json.Marshal(tasks)
 	if err != nil {
@@ -49,10 +60,10 @@ func getTasks(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	w.Write(resp)
+	_, _ = w.Write(resp)
 }
 
-func postTasks(w http.ResponseWriter, r *http.Request) {
+func addTask(w http.ResponseWriter, r *http.Request) {
 	var task Task
 	var buf bytes.Buffer
 
@@ -65,6 +76,19 @@ func postTasks(w http.ResponseWriter, r *http.Request) {
 	if err = json.Unmarshal(buf.Bytes(), &task); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
+	}
+
+	if task.ID == "" {
+		task.ID = generateID()
+	}
+
+	if _, isExists := tasks[task.ID]; isExists {
+		http.Error(w, "Таска уже существует", http.StatusConflict)
+		return
+	}
+
+	if len(task.Applications) == 0 {
+		task.Applications = []string{r.UserAgent()}
 	}
 
 	tasks[task.ID] = task
@@ -117,11 +141,11 @@ func main() {
 	r := chi.NewRouter()
 
 	r.Get("/tasks", getTasks)
-	r.Post("/tasks", postTasks)
+	r.Post("/tasks", addTask)
 	r.Get("/task/{id}", getTask)
 	r.Delete("/task/{id}", deleteTask)
 
-	if err := http.ListenAndServe(":8080", r); err != nil {
+	if err := http.ListenAndServe(":8085", r); err != nil {
 		fmt.Printf("Ошибка при запуске сервера: %s", err.Error())
 		return
 	}
